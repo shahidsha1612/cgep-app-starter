@@ -13,6 +13,17 @@ terraform {
     random  = { source = "hashicorp/random", version = "~> 3.6" }
     archive = { source = "hashicorp/archive", version = "~> 2.4" }
   }
+
+  # Remote state so local runs and CI (GitHub Actions) see the same
+  # deployed infrastructure -- without this, CI has no state and every
+  # plan looks like a from-scratch create.
+  backend "s3" {
+    bucket       = "cgep-app-starter-tfstate-699575760023"
+    key          = "cgep-app-starter/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
+  }
 }
 
 provider "aws" {
