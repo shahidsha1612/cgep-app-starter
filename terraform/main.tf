@@ -96,9 +96,54 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
+# GAP-05 support: private subnets get their own route table (no route to
+# the internet) plus gateway endpoints straight to S3/DynamoDB, so the
+# Lambda can reach the data stores without ever leaving AWS's network.
+resource "aws_route_table" "private" {
+  vpc_id = aws_vpc.main.id
+
+  tags = { Name = "${local.name_prefix}-private-rt" }
+}
+
+resource "aws_route_table_association" "private" {
+  count          = 2
+  subnet_id      = aws_subnet.private[count.index].id
+  route_table_id = aws_route_table.private.id
+}
+
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = [aws_route_table.private.id]
+}
+
+resource "aws_vpc_endpoint" "dynamodb" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${var.aws_region}.dynamodb"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = [aws_route_table.private.id]
+}
+
+######################################################################
+# KMS — customer-managed key for PHI at rest.
+# Closes GAP-01 (S3) and GAP-02 (DynamoDB). SOC 2 CC6.1.
+######################################################################
+
+resource "aws_kms_key" "phi" {
+  description             = "CMK for Acme Health patient intake PHI"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+}
+
+resource "aws_kms_alias" "phi" {
+  name          = "alias/${local.name_prefix}-phi-${local.suffix}"
+  target_key_id = aws_kms_key.phi.key_id
+}
+
 ######################################################################
 # DynamoDB — submissions table.
-# GAP-02: encryption uses AWS-owned default, not a CMK you control.
+# GAP-02 closed: encrypted under our own CMK, not the AWS-owned default.
 ######################################################################
 
 resource "aws_dynamodb_table" "intake" {
@@ -111,8 +156,10 @@ resource "aws_dynamodb_table" "intake" {
     type = "S"
   }
 
-  # No server_side_encryption block. Defaults to AWS-owned key.
-  # GAP-02: capstone learner expected to add this with a customer-owned key.
+  server_side_encryption {
+    enabled     = true
+    kms_key_arn = aws_kms_key.phi.arn
+  }
 }
 
 ######################################################################
@@ -132,9 +179,45 @@ resource "aws_s3_bucket" "uploads" {
   bucket = "${local.name_prefix}-uploads-${local.suffix}"
 }
 
-# (Intentionally omitted: SSE-KMS encryption with a customer CMK,
-#  bucket policy enforcing aws:SecureTransport, versioning, lifecycle.
-#  These are the gaps the learner closes.)
+# GAP-01 closed: encrypt under our own CMK instead of the AWS-managed default.
+resource "aws_s3_bucket_server_side_encryption_configuration" "uploads" {
+  bucket = aws_s3_bucket.uploads.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.phi.arn
+    }
+    bucket_key_enabled = true
+  }
+}
+
+# GAP-04 closed: keep every past version so an overwrite/delete is recoverable.
+resource "aws_s3_bucket_versioning" "uploads" {
+  bucket = aws_s3_bucket.uploads.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+# GAP-03 closed: refuse any request not sent over HTTPS.
+resource "aws_s3_bucket_policy" "uploads_tls_only" {
+  bucket = aws_s3_bucket.uploads.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "DenyInsecureTransport"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource  = [aws_s3_bucket.uploads.arn, "${aws_s3_bucket.uploads.arn}/*"]
+      Condition = {
+        Bool = { "aws:SecureTransport" = "false" }
+      }
+    }]
+  })
+}
 
 ######################################################################
 # Lambda — the intake handler.
@@ -167,7 +250,32 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# GAP-07: deliberately broad permissions on the workload data stores.
+# GAP-05 support: needed for AWS to create/manage the Lambda's network
+# interface inside our VPC's private subnets.
+resource "aws_iam_role_policy_attachment" "lambda_vpc" {
+  role       = aws_iam_role.lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
+
+# GAP-05 support: the Lambda's network guard — outbound HTTPS only.
+resource "aws_security_group" "lambda" {
+  name_prefix = "${local.name_prefix}-lambda-"
+  vpc_id      = aws_vpc.main.id
+  description = "Intake Lambda - HTTPS egress only"
+
+  egress {
+    description = "HTTPS to AWS services (S3/DynamoDB via VPC endpoints)"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "${local.name_prefix}-lambda-sg" }
+}
+
+# GAP-07 closed: scoped to exactly the actions handler.py performs
+# (one DynamoDB write, one S3 upload) instead of dynamodb:*/s3:*.
 resource "aws_iam_role_policy" "lambda_inline" {
   name = "intake-data-access"
   role = aws_iam_role.lambda.id
@@ -177,13 +285,18 @@ resource "aws_iam_role_policy" "lambda_inline" {
     Statement = [
       {
         Effect   = "Allow"
-        Action   = "dynamodb:*"
+        Action   = "dynamodb:PutItem"
         Resource = aws_dynamodb_table.intake.arn
       },
       {
         Effect   = "Allow"
-        Action   = "s3:*"
-        Resource = ["${aws_s3_bucket.uploads.arn}", "${aws_s3_bucket.uploads.arn}/*"]
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.uploads.arn}/uploads/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
+        Resource = aws_kms_key.phi.arn
       }
     ]
   })
@@ -205,8 +318,11 @@ resource "aws_lambda_function" "intake" {
     }
   }
 
-  # GAP-05: no vpc_config block. Learner expected to add one referencing
-  # aws_subnet.private[*] and a hardened security group.
+  # GAP-05 closed: runs inside the private subnets, guarded by aws_security_group.lambda.
+  vpc_config {
+    subnet_ids         = aws_subnet.private[*].id
+    security_group_ids = [aws_security_group.lambda.id]
+  }
 }
 
 ######################################################################
