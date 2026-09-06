@@ -363,3 +363,146 @@ resource "aws_lambda_permission" "apigw" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.intake.execution_arn}/*/*"
 }
+
+######################################################################
+# Evidence vault + audit trail — Layer 1 GRC baseline (README.md).
+# Tamper-evident storage the CI pipeline (Layer 3) uploads signed
+# compliance evidence to, plus an account-level activity log.
+######################################################################
+
+data "aws_caller_identity" "current" {}
+
+# CloudTrail needs its own KMS grants beyond the default "root has kms:*"
+# policy, so the key gets an explicit policy rather than the AWS default.
+resource "aws_kms_key_policy" "phi" {
+  key_id = aws_kms_key.phi.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "EnableIAMUserPermissions"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" }
+        Action    = "kms:*"
+        Resource  = "*"
+      },
+      {
+        Sid       = "AllowCloudTrailToEncryptLogs"
+        Effect    = "Allow"
+        Principal = { Service = "cloudtrail.amazonaws.com" }
+        Action    = "kms:GenerateDataKey*"
+        Resource  = "*"
+        Condition = {
+          StringLike = {
+            "kms:EncryptionContext:aws:cloudtrail:arn" = "arn:aws:cloudtrail:*:${data.aws_caller_identity.current.account_id}:trail/*"
+          }
+        }
+      },
+      {
+        Sid       = "AllowCloudTrailToDescribeKey"
+        Effect    = "Allow"
+        Principal = { Service = "cloudtrail.amazonaws.com" }
+        Action    = "kms:DescribeKey"
+        Resource  = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_s3_bucket" "evidence" {
+  bucket              = "${local.name_prefix}-evidence-${local.suffix}"
+  object_lock_enabled = true
+}
+
+resource "aws_s3_bucket_versioning" "evidence" {
+  bucket = aws_s3_bucket.evidence.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+# GOVERNANCE (not COMPLIANCE) so the sandbox can still be torn down with
+# `make destroy` via s3:BypassGovernanceRetention -- COMPLIANCE mode would
+# make objects undeletable by anyone, including the account owner, until
+# the retention period lapsed.
+resource "aws_s3_bucket_object_lock_configuration" "evidence" {
+  bucket = aws_s3_bucket.evidence.id
+
+  rule {
+    default_retention {
+      mode = "GOVERNANCE"
+      days = 1
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.evidence]
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "evidence" {
+  bucket = aws_s3_bucket.evidence.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.phi.arn
+    }
+    bucket_key_enabled = true
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "evidence" {
+  bucket = aws_s3_bucket.evidence.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_policy" "evidence_cloudtrail" {
+  bucket = aws_s3_bucket.evidence.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AWSCloudTrailAclCheck"
+        Effect    = "Allow"
+        Principal = { Service = "cloudtrail.amazonaws.com" }
+        Action    = "s3:GetBucketAcl"
+        Resource  = aws_s3_bucket.evidence.arn
+        Condition = {
+          StringEquals = {
+            "aws:SourceArn" = "arn:aws:cloudtrail:${var.aws_region}:${data.aws_caller_identity.current.account_id}:trail/${local.name_prefix}-trail-${local.suffix}"
+          }
+        }
+      },
+      {
+        Sid       = "AWSCloudTrailWrite"
+        Effect    = "Allow"
+        Principal = { Service = "cloudtrail.amazonaws.com" }
+        Action    = "s3:PutObject"
+        Resource  = "${aws_s3_bucket.evidence.arn}/cloudtrail/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+        Condition = {
+          StringEquals = {
+            "s3:x-amz-acl"  = "bucket-owner-full-control"
+            "aws:SourceArn" = "arn:aws:cloudtrail:${var.aws_region}:${data.aws_caller_identity.current.account_id}:trail/${local.name_prefix}-trail-${local.suffix}"
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_cloudtrail" "main" {
+  name                          = "${local.name_prefix}-trail-${local.suffix}"
+  s3_bucket_name                = aws_s3_bucket.evidence.id
+  s3_key_prefix                 = "cloudtrail"
+  include_global_service_events = true
+  is_multi_region_trail         = false
+  enable_log_file_validation    = true
+  kms_key_id                    = aws_kms_key.phi.arn
+
+  depends_on = [aws_s3_bucket_policy.evidence_cloudtrail]
+}
