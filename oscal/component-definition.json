@@ -5,7 +5,7 @@
       "title": "Acme Health Patient Intake API - Component Definition",
       "last-modified": "2026-09-06T17:00:00Z",
       "version": "1.0.0",
-      "oscal-version": "1.1.2",
+      "oscal-version": "1.2.3",
       "parties": [
         {
           "uuid": "e533ddb4-d700-4073-a174-3740f08fc8c4",

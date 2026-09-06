@@ -25,7 +25,13 @@ in `FRAMEWORKS.md`.
 - Manual check: all 8 gaps from `GAPS.md` present exactly once, every
   `href` in `links` resolves to a real `back-matter` resource `uuid`,
   every UUID is unique.
-- **Not performed:** full OSCAL schema/constraint validation (e.g. via
-  `oscal-cli`), since it wasn't available in this environment. Worth
-  running before final submission if `oscal-cli` or the NIST OSCAL
-  online validator is accessible.
+- **Full schema validation against NIST's official OSCAL schema**:
+  `oscal_component_schema.json` from the `usnistgov/OSCAL` v1.2.3 GitHub
+  release, validated with Python's `jsonschema` (Draft7Validator). Result:
+  **0 validation errors.** `oscal-cli` itself wasn't available in this
+  environment, but validating against the same schema `oscal-cli` uses
+  gives equivalent structural confidence.
+  - Note: the schema's patterns use Unicode property escapes (`\p{...}`)
+    that Python's built-in `re` module can't compile -- validation used
+    the third-party `regex` package shimmed in as `re` (`sys.modules['re']
+    = regex` before importing `jsonschema`) to work around it.

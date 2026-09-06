@@ -193,9 +193,23 @@ real, followable link rather than a claim in prose.
 
 **Verification performed:** valid JSON (`json.load`); manually confirmed
 all 8 gaps present exactly once, every `link` resolves to a real
-back-matter UUID, no duplicate UUIDs. **Not performed:** full OSCAL
-schema validation via `oscal-cli` (not available in this environment) --
-noted in `oscal/README.md` as a pre-submission follow-up.
+back-matter UUID, no duplicate UUIDs. Also ran **full schema validation**
+against NIST's official `oscal_component_schema.json` (v1.2.3 release)
+using Python's `jsonschema` -- **0 errors**. `oscal-cli` itself wasn't
+available locally, but validating against the same schema it uses gives
+equivalent confidence.
+
+**Gotcha:** the official schema's regex patterns use Unicode property
+escapes (`\p{...}`), which Python's built-in `re` module can't compile
+("bad escape \p"). Worked around by installing the third-party `regex`
+package and shimming it in as `re` (`sys.modules['re'] = regex` before
+importing `jsonschema`), since `regex` is otherwise a drop-in superset of
+`re`'s API.
+
+**Also fixed:** metadata originally declared `oscal-version: 1.1.2` but
+validation ran against the v1.2.3 schema -- bumped the declared version
+to `1.2.3` to match what was actually verified, rather than leave a
+claim that wasn't checked.
 
 ## All 4 capstone layers now in place
 
