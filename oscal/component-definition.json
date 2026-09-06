@@ -1,0 +1,198 @@
+{
+  "component-definition": {
+    "uuid": "4ad67ac8-685a-46a0-a15e-2505a1c6765f",
+    "metadata": {
+      "title": "Acme Health Patient Intake API - Component Definition",
+      "last-modified": "2026-09-06T17:00:00Z",
+      "version": "1.0.0",
+      "oscal-version": "1.1.2",
+      "parties": [
+        {
+          "uuid": "e533ddb4-d700-4073-a174-3740f08fc8c4",
+          "type": "organization",
+          "name": "Acme Health"
+        }
+      ],
+      "remarks": "Primary framework: SOC 2 Trust Services Criteria (declared in FRAMEWORKS.md). AICPA publishes no official OSCAL catalog for the TSC, so implemented-requirements cite NIST SP 800-53 Rev 5 as the structural OSCAL catalog (per FRAMEWORKS.md's own note), while the governing SOC 2 control ID is carried on each requirement as a prop for traceability back to the declared framework."
+    },
+    "components": [
+      {
+        "uuid": "0c109b0b-6a43-4409-9bde-51a482bf1bbd",
+        "type": "this-system",
+        "title": "Acme Health Patient Intake API",
+        "description": "The patient intake workload (API Gateway, Lambda, DynamoDB, S3, VPC) described in WORKLOAD.md, as hardened by the Terraform baseline in terraform/main.tf, gated by the Rego policy suite in policy/, and enforced by the GitHub Actions pipeline in .github/workflows/grc-pipeline.yml.",
+        "control-implementations": [
+          {
+            "uuid": "2f647a53-0c6c-4c21-a2af-a6c1c741f3b2",
+            "source": "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json",
+            "description": "Controls implemented by the intake workload, mapped from the declared primary framework (SOC 2 TSC) to their nearest NIST SP 800-53 Rev 5 equivalents for OSCAL catalog traceability.",
+            "implemented-requirements": [
+              {
+                "uuid": "48ab3c7f-b86b-43df-a696-7014051d500c",
+                "control-id": "sc-28.1",
+                "description": "GAP-01 closed: the S3 uploads bucket (aws_s3_bucket.uploads) is encrypted via aws_s3_bucket_server_side_encryption_configuration.uploads using aws:kms with the customer-managed key aws_kms_key.phi, instead of the AWS-managed SSE-S3 default. Verified live: `terraform state list` confirms the resource; conftest policy s3_encryption.rego fails closed if the KMS configuration is removed.",
+                "props": [
+                  { "name": "framework", "value": "soc2" },
+                  { "name": "soc2-control", "value": "CC6.1" },
+                  { "name": "gap-id", "value": "GAP-01" },
+                  { "name": "implementation-status", "value": "implemented" }
+                ],
+                "links": [
+                  { "href": "#f9d681ab-0773-49ad-b853-0e7c2c3cede7", "rel": "policy" },
+                  { "href": "#7c773b0b-e40e-40a1-9f65-adcf92d0819e", "rel": "reference" }
+                ]
+              },
+              {
+                "uuid": "6559f176-4218-498f-9c84-92b2fb1dc1a5",
+                "control-id": "sc-28.1",
+                "description": "GAP-02 closed: the DynamoDB submissions table (aws_dynamodb_table.intake) sets server_side_encryption.kms_key_arn to the same customer-managed key (aws_kms_key.phi), instead of the AWS-owned default key. Verified live and via conftest policy dynamodb_encryption.rego, which fails closed if the block is removed or the key reference is dropped.",
+                "props": [
+                  { "name": "framework", "value": "soc2" },
+                  { "name": "soc2-control", "value": "CC6.1" },
+                  { "name": "gap-id", "value": "GAP-02" },
+                  { "name": "implementation-status", "value": "implemented" }
+                ],
+                "links": [
+                  { "href": "#7b263fd8-b7e5-41af-8a70-191c93c09c63", "rel": "policy" },
+                  { "href": "#7c773b0b-e40e-40a1-9f65-adcf92d0819e", "rel": "reference" }
+                ]
+              },
+              {
+                "uuid": "68f21baa-9545-43f2-9734-f6168067addd",
+                "control-id": "sc-8.1",
+                "description": "GAP-03 closed: aws_s3_bucket_policy.uploads_tls_only denies any S3 request against the uploads bucket where aws:SecureTransport is false, refusing plaintext access to PHI attachments in transit. Verified via conftest policy s3_tls_only.rego, which parses the deployed bucket policy JSON and fails closed if the deny statement is missing.",
+                "props": [
+                  { "name": "framework", "value": "soc2" },
+                  { "name": "soc2-control", "value": "CC6.7" },
+                  { "name": "gap-id", "value": "GAP-03" },
+                  { "name": "implementation-status", "value": "implemented" }
+                ],
+                "links": [
+                  { "href": "#ef54ce89-70c8-4fc7-855e-4844f2683b85", "rel": "policy" },
+                  { "href": "#7c773b0b-e40e-40a1-9f65-adcf92d0819e", "rel": "reference" }
+                ]
+              },
+              {
+                "uuid": "c37b31bf-b811-4834-83c3-95bcca5a2ef5",
+                "control-id": "cp-9",
+                "description": "GAP-04 closed: aws_s3_bucket_versioning.uploads sets versioning_configuration.status to Enabled, so an overwritten or deleted PHI attachment remains recoverable from a prior version. Verified via conftest policy s3_versioning.rego, which fails closed if versioning is disabled or removed.",
+                "props": [
+                  { "name": "framework", "value": "soc2" },
+                  { "name": "soc2-control", "value": "A1.2" },
+                  { "name": "gap-id", "value": "GAP-04" },
+                  { "name": "implementation-status", "value": "implemented" }
+                ],
+                "links": [
+                  { "href": "#1944f63b-af7f-4a54-95e4-e805a00c8867", "rel": "policy" },
+                  { "href": "#7c773b0b-e40e-40a1-9f65-adcf92d0819e", "rel": "reference" }
+                ]
+              },
+              {
+                "uuid": "16ec920f-4fa3-455f-8089-69e07bfaa2b9",
+                "control-id": "sc-7",
+                "description": "GAP-05 closed: aws_lambda_function.intake runs inside the private subnets (aws_subnet.private[*]) behind aws_security_group.lambda (HTTPS egress only), reaching DynamoDB and S3 through dedicated VPC gateway endpoints rather than the public internet. Verified live with a post-remediation smoke test against /intake (HTTP 200), and via conftest policy lambda_vpc.rego, which fails closed if vpc_config is removed.",
+                "props": [
+                  { "name": "framework", "value": "soc2" },
+                  { "name": "soc2-control", "value": "CC6.6" },
+                  { "name": "gap-id", "value": "GAP-05" },
+                  { "name": "implementation-status", "value": "implemented" }
+                ],
+                "links": [
+                  { "href": "#7853dd1c-8cfc-403e-b474-1504bb53b6c6", "rel": "policy" },
+                  { "href": "#7c773b0b-e40e-40a1-9f65-adcf92d0819e", "rel": "reference" }
+                ]
+              },
+              {
+                "uuid": "933cd300-72ba-466a-b853-1fa433bffb16",
+                "control-id": "ac-6",
+                "description": "GAP-07 closed: aws_iam_role_policy.lambda_inline grants exactly dynamodb:PutItem and s3:PutObject plus the minimum KMS actions the Lambda needs, replacing the prior dynamodb:*/s3:* wildcards. Verified via conftest policy lambda_iam_least_privilege.rego, which fails closed if either wildcard action reappears -- confirmed directly by temporarily reintroducing the wildcard policy and observing the gate fail (see WRITEUP.md).",
+                "props": [
+                  { "name": "framework", "value": "soc2" },
+                  { "name": "soc2-control", "value": "CC6.3" },
+                  { "name": "gap-id", "value": "GAP-07" },
+                  { "name": "implementation-status", "value": "implemented" }
+                ],
+                "links": [
+                  { "href": "#9847683e-ba3b-4270-afdd-46d1968b946a", "rel": "policy" },
+                  { "href": "#7c773b0b-e40e-40a1-9f65-adcf92d0819e", "rel": "reference" }
+                ]
+              },
+              {
+                "uuid": "b94ecb92-b866-4eb6-aa48-9892cf5e2e7b",
+                "control-id": "si-4",
+                "description": "GAP-06 open: aws_lambda_function.intake has no reserved concurrency, no dead-letter queue, and no X-Ray tracing configured, so failures or throttling under load are not automatically surfaced. No Terraform override, Rego policy, or compensating process currently addresses this. Accepted as residual risk for this submission; planned for a future pass.",
+                "props": [
+                  { "name": "framework", "value": "soc2" },
+                  { "name": "soc2-control", "value": "CC7.2" },
+                  { "name": "gap-id", "value": "GAP-06" },
+                  { "name": "implementation-status", "value": "planned" }
+                ],
+                "links": [
+                  { "href": "#7c773b0b-e40e-40a1-9f65-adcf92d0819e", "rel": "reference" }
+                ]
+              },
+              {
+                "uuid": "c11369d4-fe04-4073-8b4f-cd8f8f91e5e2",
+                "control-id": "au-2",
+                "description": "GAP-08 open: aws_apigatewayv2_stage.default has no access_log_settings, no throttling, and no WAF association, so per-request activity at the public entry point is not captured. No Terraform override, Rego policy, or compensating process currently addresses this. Accepted as residual risk for this submission; planned for a future pass. Note: aws_cloudtrail.main (added for the evidence pipeline) logs account-level API activity but does not substitute for API Gateway's own execution/access logs.",
+                "props": [
+                  { "name": "framework", "value": "soc2" },
+                  { "name": "soc2-control", "value": "CC7.2" },
+                  { "name": "gap-id", "value": "GAP-08" },
+                  { "name": "implementation-status", "value": "planned" }
+                ],
+                "links": [
+                  { "href": "#7c773b0b-e40e-40a1-9f65-adcf92d0819e", "rel": "reference" }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "back-matter": {
+      "resources": [
+        {
+          "uuid": "7c773b0b-e40e-40a1-9f65-adcf92d0819e",
+          "title": "GAPS.md - named gap definitions",
+          "rlinks": [{ "href": "../GAPS.md" }]
+        },
+        {
+          "uuid": "fd120a7c-e7c9-4978-88f4-62036c3a0f10",
+          "title": "FRAMEWORKS.md - SOC 2 / HIPAA / CMMC mapping primer",
+          "rlinks": [{ "href": "../FRAMEWORKS.md" }]
+        },
+        {
+          "uuid": "f9d681ab-0773-49ad-b853-0e7c2c3cede7",
+          "title": "policy/s3_encryption.rego",
+          "rlinks": [{ "href": "../policy/s3_encryption.rego" }]
+        },
+        {
+          "uuid": "7b263fd8-b7e5-41af-8a70-191c93c09c63",
+          "title": "policy/dynamodb_encryption.rego",
+          "rlinks": [{ "href": "../policy/dynamodb_encryption.rego" }]
+        },
+        {
+          "uuid": "ef54ce89-70c8-4fc7-855e-4844f2683b85",
+          "title": "policy/s3_tls_only.rego",
+          "rlinks": [{ "href": "../policy/s3_tls_only.rego" }]
+        },
+        {
+          "uuid": "1944f63b-af7f-4a54-95e4-e805a00c8867",
+          "title": "policy/s3_versioning.rego",
+          "rlinks": [{ "href": "../policy/s3_versioning.rego" }]
+        },
+        {
+          "uuid": "7853dd1c-8cfc-403e-b474-1504bb53b6c6",
+          "title": "policy/lambda_vpc.rego",
+          "rlinks": [{ "href": "../policy/lambda_vpc.rego" }]
+        },
+        {
+          "uuid": "9847683e-ba3b-4270-afdd-46d1968b946a",
+          "title": "policy/lambda_iam_least_privilege.rego",
+          "rlinks": [{ "href": "../policy/lambda_iam_least_privilege.rego" }]
+        }
+      ]
+    }
+  }
+}

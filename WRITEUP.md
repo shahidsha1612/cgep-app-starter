@@ -178,6 +178,32 @@ vault confirms `tfplan.json`, `tfplan.json.sig`, `tfplan.json.pem`,
 `evidence-manifest.json.pem` all present under
 `evidence/<the triggering commit's SHA>/`.
 
-## Still to do (remaining 1 of 4 capstone layers)
+## OSCAL component (Layer 4 of 4)
 
-1. **OSCAL component-definition.json** - control-implementation entries citing a SOC 2 TSC catalog (or NIST 800-53 mapping, per FRAMEWORKS.md's note that AICPA has no official OSCAL catalog), covering the 6 closed gaps plus a documented stance on GAP-06/GAP-08.
+`oscal/component-definition.json`: one component ("Acme Health Patient
+Intake API", type `this-system`), one control-implementation citing NIST
+SP 800-53 Rev 5 as the `source` catalog (AICPA has no official OSCAL
+catalog for SOC 2 TSC, per `FRAMEWORKS.md`), 8 `implemented-requirements`
+-- one per gap in `GAPS.md`, 6 `implemented` (GAP-01/02/03/04/05/07), 2
+`planned` (GAP-06/08, documented as accepted residual risk rather than
+omitted). Each requirement carries the governing SOC 2 control as a prop
+and links into `back-matter` at the exact Rego policy enforcing it, so
+the starter -> policy -> OSCAL -> catalog chain `GAPS.md` describes is a
+real, followable link rather than a claim in prose.
+
+**Verification performed:** valid JSON (`json.load`); manually confirmed
+all 8 gaps present exactly once, every `link` resolves to a real
+back-matter UUID, no duplicate UUIDs. **Not performed:** full OSCAL
+schema validation via `oscal-cli` (not available in this environment) --
+noted in `oscal/README.md` as a pre-submission follow-up.
+
+## All 4 capstone layers now in place
+
+1. Terraform GRC baseline -- 6 of 8 gaps closed, deployed, smoke-tested.
+2. Rego/OPA policy suite -- 6 policies, proven to fail closed.
+3. GitHub Actions pipeline -- plan -> gate -> apply -> sign -> vault, green on `main`.
+4. OSCAL component-definition -- 8 requirements, 6 implemented / 2 planned.
+
+Remaining open items are the 2 documented residual-risk gaps (GAP-06,
+GAP-08) and running a real OSCAL schema validator before final
+submission.
