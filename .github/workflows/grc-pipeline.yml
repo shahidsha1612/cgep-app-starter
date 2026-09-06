@@ -60,6 +60,7 @@ jobs:
           path: |
             terraform/tfplan
             terraform/tfplan.json
+            terraform/lambda/handler.zip
           retention-days: 14
 
   apply-and-evidence:
