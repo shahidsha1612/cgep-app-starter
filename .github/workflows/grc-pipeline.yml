@@ -1,0 +1,129 @@
+name: GRC pipeline
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write # needed for Cosign keyless signing (GitHub OIDC -> Sigstore)
+
+env:
+  AWS_REGION: us-east-1
+  CONFTEST_VERSION: "0.69.0"
+
+jobs:
+  plan-and-gate:
+    name: Plan + policy gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install Conftest
+        run: |
+          curl -sL "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" -o conftest.tar.gz
+          tar xzf conftest.tar.gz conftest
+          sudo mv conftest /usr/local/bin/
+          conftest --version
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform plan
+        run: terraform plan -out=tfplan -input=false
+
+      - name: Export plan as JSON
+        run: terraform show -json tfplan > tfplan.json
+
+      # The policy gate: any of the 6 gap-detection policies failing here
+      # blocks the merge/apply. This is what stops a closed gap from being
+      # silently reintroduced.
+      - name: Conftest policy gate
+        run: conftest test tfplan.json -p ../policy --all-namespaces
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: |
+            terraform/tfplan
+            terraform/tfplan.json
+          retention-days: 14
+
+  apply-and-evidence:
+    name: Apply + sign + upload evidence
+    needs: plan-and-gate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: terraform
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      # Applies the exact plan the policy gate already reviewed and
+      # approved above -- never a freshly-generated one.
+      - name: Terraform apply
+        run: terraform apply -input=false tfplan
+
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Build evidence manifest
+        run: |
+          cat > evidence-manifest.json <<EOF
+          {
+            "commit": "${{ github.sha }}",
+            "workflow_run": "${{ github.run_id }}",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "policy_suite": "6/6 SOC 2 gap-detection policies passed"
+          }
+          EOF
+
+      # Keyless signing: uses the job's own GitHub OIDC token to get a
+      # short-lived cert from Sigstore's public-good Fulcio instance.
+      # No signing key to generate, store, or rotate.
+      - name: Sign evidence with Cosign
+        run: |
+          for f in tfplan.json evidence-manifest.json; do
+            cosign sign-blob --yes \
+              --output-signature "$f.sig" \
+              --output-certificate "$f.pem" \
+              "$f"
+          done
+
+      - name: Upload signed evidence to the vault
+        run: |
+          BUCKET=$(terraform output -raw evidence_bucket)
+          PREFIX="evidence/${{ github.sha }}"
+          for f in tfplan.json tfplan.json.sig tfplan.json.pem \
+                   evidence-manifest.json evidence-manifest.json.sig evidence-manifest.json.pem; do
+            aws s3 cp "$f" "s3://$BUCKET/$PREFIX/$f"
+          done
