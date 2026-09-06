@@ -319,7 +319,11 @@ resource "aws_lambda_function" "intake" {
   handler          = "handler.handler"
   runtime          = "python3.12"
   filename         = data.archive_file.handler.output_path
-  source_code_hash = data.archive_file.handler.output_base64sha256
+  # Hash the source directly, not the zip: archive_file's zip bytes embed
+  # file timestamps that differ across build machines (local Windows vs.
+  # the Linux CI runner), causing spurious "1 to change" drift on every
+  # plan even when handler.py is byte-identical.
+  source_code_hash = filebase64sha256("${path.module}/lambda/handler.py")
   timeout          = 10
 
   environment {
