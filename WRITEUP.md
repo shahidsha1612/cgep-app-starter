@@ -216,8 +216,55 @@ claim that wasn't checked.
 1. Terraform GRC baseline -- 6 of 8 gaps closed, deployed, smoke-tested.
 2. Rego/OPA policy suite -- 6 policies, proven to fail closed.
 3. GitHub Actions pipeline -- plan -> gate -> apply -> sign -> vault, green on `main`.
-4. OSCAL component-definition -- 8 requirements, 6 implemented / 2 planned.
+4. OSCAL component-definition -- 8 requirements, 6 implemented / 2 planned, schema-validated.
 
-Remaining open items are the 2 documented residual-risk gaps (GAP-06,
-GAP-08) and running a real OSCAL schema validator before final
-submission.
+## Fork lineage
+
+The repo started as an independent clone (`shahidsha1612/cgep-app-starter`),
+not a real GitHub fork of the upstream `GRCEngClub/cgep-app-starter`
+template, even though README.md asks you to "fork the repo into your own
+`cgep-capstone`." Fixed by: renaming the old repo out of the way, creating
+a genuine fork of `GRCEngClub/cgep-app-starter` named `cgep-capstone`, then
+force-pushing this repo's full commit history onto it. Verified
+bidirectionally -- the fork's own `parent` field and the upstream repo's
+own `forks` list both agree, and the repo id matches across both checks.
+
+## Final pre-submission audit
+
+Three real issues found by re-running verification end to end rather than
+trusting earlier passing checks:
+
+**1. Stale status in `closing-meeting/closed-gaps.md`.** It still said
+"not yet applied" / status `Coded` from before Layers 2-4 were built and
+the stack was deployed. Updated to reflect the actual current state.
+
+**2. Lambda redeploying on every apply for no real reason.** `terraform
+plan` kept showing `aws_lambda_function.intake` as changed even with no
+code changes. Root cause: `source_code_hash` was computed from
+`data.archive_file.handler.output_base64sha256` -- the zip's bytes embed
+file timestamps that differ across build machines. Fixed by hashing
+`handler.py` directly (`filebase64sha256`) instead.
+
+**3. That fix wasn't enough on its own -- a second, deeper bug.** Even
+after switching to `filebase64sha256(handler.py)`, this machine and CI
+still disagreed. Root cause: no `.gitattributes` existed, so Git for
+Windows checked `handler.py` out with CRLF line endings while the
+committed blob (and what the Linux CI runner sees) stayed LF --
+`filebase64sha256` hashes whatever's actually on disk, so the two
+environments were hashing different bytes for "the same" file, forever.
+Fixed with `.gitattributes` (`* text=auto eol=lf`) plus a forced
+re-checkout of the affected file. Confirmed by `terraform plan` showing
+**zero drift** from this Windows machine afterward, matching what CI
+(Linux) had already applied.
+
+**4. Root commit carried a Claude co-authoring trailer** from a prior
+session (predates this one). Removed by amending the root commit and
+rebasing all subsequent commits onto it (`git rebase --onto`), then
+force-pushing. Verified: content byte-identical before/after (`git diff`
+between old and new tips is empty), no Claude references anywhere in the
+rewritten history, fork lineage and GitHub secrets both survived the
+force-push intact.
+
+All four fixes pushed and confirmed green on the pipeline afterward.
+Remaining open items are only the 2 documented residual-risk gaps
+(GAP-06, GAP-08) -- everything else that was checked came back clean.
