@@ -128,7 +128,56 @@ before assuming a schema.
   version afterward and re-ran `terraform validate` to confirm nothing was
   left broken.
 
-## Still to do (remaining 2 of 4 capstone layers)
+## CI/CD pipeline - GitHub Actions (Layer 3 of 4)
 
-1. **GitHub Actions pipeline** - plan → Conftest gate → apply → sign → upload evidence.
-2. **OSCAL component-definition.json** - control-implementation entries citing a SOC 2 TSC catalog (or NIST 800-53 mapping, per FRAMEWORKS.md's note that AICPA has no official OSCAL catalog), covering the 6 closed gaps plus a documented stance on GAP-06/GAP-08.
+`.github/workflows/grc-pipeline.yml`, two jobs:
+- `plan-and-gate` (every PR + push): `terraform plan` -> export JSON ->
+  `conftest test ... --all-namespaces` against `policy/`. Blocks on any
+  gap-detection failure.
+- `apply-and-evidence` (push to `main` only): applies the exact plan the
+  gate reviewed, builds an evidence manifest (commit SHA, run id,
+  timestamp, policy result), signs both the plan JSON and the manifest
+  with Cosign keyless (GitHub OIDC -> Sigstore Fulcio/Rekor, no signing
+  key to manage), uploads everything to the S3 evidence vault under
+  `evidence/<commit-sha>/`.
+
+Secrets: `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` set on the repo via
+`gh secret set`, reusing the same sandbox keys used for local Terraform
+runs (acceptable for a personal sandbox account; an OIDC federated role
+would be the production-grade upgrade, noted as a possible future
+improvement rather than built here).
+
+**Gotcha (real, caught on first CI run):** state. GitHub Actions had no
+access to the Terraform state that local `terraform apply` had already
+built up -- state was local-only and correctly gitignored, so every CI
+plan looked like a from-scratch create. Computed values (KMS key ARN,
+bucket ARNs, subnet IDs) came back `null`/unknown instead of their real
+values, and 3 of 6 policies (GAP-02, GAP-03, GAP-05 -- the ones checking
+values derived from other resources, not literal strings) correctly
+refused to treat `unknown` as evidence a gap was closed and failed the
+gate. Fixed by adding a dedicated, versioned, encrypted S3 bucket
+(`cgep-app-starter-tfstate-<account-id>`) as a remote backend with native
+S3 locking (`use_lockfile = true`, no DynamoDB table needed), then
+`terraform init -migrate-state` to move the existing state across intact
+-- confirmed via `terraform plan` showing no drift afterward.
+
+**Gotcha (also real, second CI run):** `data.archive_file.handler`
+builds `lambda/handler.zip` as a local side effect of `terraform plan` --
+it's gitignored (build output, not source). The `apply-and-evidence` job
+runs on its own fresh checkout with no local build history, so when it
+tried to `terraform apply` the saved plan, the zip Terraform expected to
+find on disk simply wasn't there. Fixed by adding
+`terraform/lambda/handler.zip` to the same upload/download-artifact steps
+already carrying `tfplan`/`tfplan.json` between jobs.
+
+**Verification performed:** pushed to `main`, watched two failed runs
+(state, then the zip) get diagnosed and fixed one push at a time, then a
+fully green run -- both jobs succeeded, and `aws s3 ls` on the evidence
+vault confirms `tfplan.json`, `tfplan.json.sig`, `tfplan.json.pem`,
+`evidence-manifest.json`, `evidence-manifest.json.sig`,
+`evidence-manifest.json.pem` all present under
+`evidence/<the triggering commit's SHA>/`.
+
+## Still to do (remaining 1 of 4 capstone layers)
+
+1. **OSCAL component-definition.json** - control-implementation entries citing a SOC 2 TSC catalog (or NIST 800-53 mapping, per FRAMEWORKS.md's note that AICPA has no official OSCAL catalog), covering the 6 closed gaps plus a documented stance on GAP-06/GAP-08.
