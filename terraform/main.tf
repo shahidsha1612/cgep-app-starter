@@ -515,7 +515,7 @@ resource "aws_cloudtrail" "main" {
   s3_bucket_name                = aws_s3_bucket.evidence.id
   s3_key_prefix                 = "cloudtrail"
   include_global_service_events = true
-  is_multi_region_trail         = false
+  is_multi_region_trail         = true
   enable_log_file_validation    = true
   kms_key_id                    = aws_kms_key.phi.arn
 

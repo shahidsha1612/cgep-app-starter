@@ -15,12 +15,18 @@ control it enforces (see each file's `METADATA` header).
 
 ## Running it
 
-From `terraform/`:
+Unit tests (fixture-based, no AWS/Terraform needed) from the repo root:
+
+```bash
+opa test ./policies
+```
+
+Against a real Terraform plan, from `terraform/`:
 
 ```bash
 terraform plan -out tfplan
 terraform show -json tfplan > tfplan.json
-conftest test tfplan.json -p ../policy
+conftest test tfplan.json -p ../policies --all-namespaces
 ```
 
 A passing run means every closed gap is still present in the plan. If any gap

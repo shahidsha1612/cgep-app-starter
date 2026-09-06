@@ -26,6 +26,10 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
 
+      - uses: open-policy-agent/setup-opa@v2
+        with:
+          version: latest
+
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -39,20 +43,20 @@ jobs:
           sudo mv conftest /usr/local/bin/
           conftest --version
 
-      - name: Terraform init
-        run: terraform init -input=false
+      - name: Plan
+        run: |
+          terraform init -input=false
+          terraform plan -out=tfplan -input=false
+          terraform show -json tfplan > tfplan.json
 
-      - name: Terraform plan
-        run: terraform plan -out=tfplan -input=false
-
-      - name: Export plan as JSON
-        run: terraform show -json tfplan > tfplan.json
-
-      # The policy gate: any of the 6 gap-detection policies failing here
-      # blocks the merge/apply. This is what stops a closed gap from being
-      # silently reintroduced.
-      - name: Conftest policy gate
-        run: conftest test tfplan.json -p ../policy --all-namespaces
+      # The policy gate: unit tests first (no AWS needed), then the 6
+      # gap-detection policies against the real plan. Either failing here
+      # blocks the merge/apply -- this is what stops a closed gap from
+      # being silently reintroduced.
+      - name: Policy check
+        run: |
+          opa test ../policies
+          conftest test tfplan.json -p ../policies --all-namespaces
 
       - uses: actions/upload-artifact@v4
         with:
@@ -87,13 +91,10 @@ jobs:
           name: tfplan
           path: terraform
 
-      - name: Terraform init
-        run: terraform init -input=false
-
-      # Applies the exact plan the policy gate already reviewed and
-      # approved above -- never a freshly-generated one.
-      - name: Terraform apply
-        run: terraform apply -input=false tfplan
+      - name: Apply
+        run: |
+          terraform init -input=false
+          terraform apply -input=false tfplan
 
       - uses: sigstore/cosign-installer@v3
 
@@ -111,7 +112,7 @@ jobs:
       # Keyless signing: uses the job's own GitHub OIDC token to get a
       # short-lived cert from Sigstore's public-good Fulcio instance.
       # No signing key to generate, store, or rotate.
-      - name: Sign evidence with Cosign
+      - name: Sign
         run: |
           for f in tfplan.json evidence-manifest.json; do
             cosign sign-blob --yes \
@@ -120,7 +121,7 @@ jobs:
               "$f"
           done
 
-      - name: Upload signed evidence to the vault
+      - name: Upload
         run: |
           BUCKET=$(terraform output -raw evidence_bucket)
           PREFIX="evidence/${{ github.sha }}"

@@ -20,12 +20,15 @@
         "uuid": "0c109b0b-6a43-4409-9bde-51a482bf1bbd",
         "type": "this-system",
         "title": "Acme Health Patient Intake API",
-        "description": "The patient intake workload (API Gateway, Lambda, DynamoDB, S3, VPC) described in WORKLOAD.md, as hardened by the Terraform baseline in terraform/main.tf, gated by the Rego policy suite in policy/, and enforced by the GitHub Actions pipeline in .github/workflows/grc-pipeline.yml.",
+        "description": "The patient intake workload (API Gateway, Lambda, DynamoDB, S3, VPC) described in WORKLOAD.md, as hardened by the Terraform baseline in terraform/main.tf, gated by the Rego policy suite in policies/, and enforced by the GitHub Actions pipeline in .github/workflows/grc-gate.yml.",
         "control-implementations": [
           {
             "uuid": "2f647a53-0c6c-4c21-a2af-a6c1c741f3b2",
             "source": "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json",
             "description": "Controls implemented by the intake workload, mapped from the declared primary framework (SOC 2 TSC) to their nearest NIST SP 800-53 Rev 5 equivalents for OSCAL catalog traceability.",
+            "links": [
+              { "href": "#fd120a7c-e7c9-4978-88f4-62036c3a0f10", "rel": "reference" }
+            ],
             "implemented-requirements": [
               {
                 "uuid": "48ab3c7f-b86b-43df-a696-7014051d500c",
@@ -155,42 +158,42 @@
         {
           "uuid": "7c773b0b-e40e-40a1-9f65-adcf92d0819e",
           "title": "GAPS.md - named gap definitions",
-          "rlinks": [{ "href": "../GAPS.md" }]
+          "rlinks": [{ "href": "../../GAPS.md" }]
         },
         {
           "uuid": "fd120a7c-e7c9-4978-88f4-62036c3a0f10",
           "title": "FRAMEWORKS.md - SOC 2 / HIPAA / CMMC mapping primer",
-          "rlinks": [{ "href": "../FRAMEWORKS.md" }]
+          "rlinks": [{ "href": "../../FRAMEWORKS.md" }]
         },
         {
           "uuid": "f9d681ab-0773-49ad-b853-0e7c2c3cede7",
-          "title": "policy/s3_encryption.rego",
-          "rlinks": [{ "href": "../policy/s3_encryption.rego" }]
+          "title": "policies/s3_encryption.rego",
+          "rlinks": [{ "href": "../../policies/s3_encryption.rego" }]
         },
         {
           "uuid": "7b263fd8-b7e5-41af-8a70-191c93c09c63",
-          "title": "policy/dynamodb_encryption.rego",
-          "rlinks": [{ "href": "../policy/dynamodb_encryption.rego" }]
+          "title": "policies/dynamodb_encryption.rego",
+          "rlinks": [{ "href": "../../policies/dynamodb_encryption.rego" }]
         },
         {
           "uuid": "ef54ce89-70c8-4fc7-855e-4844f2683b85",
-          "title": "policy/s3_tls_only.rego",
-          "rlinks": [{ "href": "../policy/s3_tls_only.rego" }]
+          "title": "policies/s3_tls_only.rego",
+          "rlinks": [{ "href": "../../policies/s3_tls_only.rego" }]
         },
         {
           "uuid": "1944f63b-af7f-4a54-95e4-e805a00c8867",
-          "title": "policy/s3_versioning.rego",
-          "rlinks": [{ "href": "../policy/s3_versioning.rego" }]
+          "title": "policies/s3_versioning.rego",
+          "rlinks": [{ "href": "../../policies/s3_versioning.rego" }]
         },
         {
           "uuid": "7853dd1c-8cfc-403e-b474-1504bb53b6c6",
-          "title": "policy/lambda_vpc.rego",
-          "rlinks": [{ "href": "../policy/lambda_vpc.rego" }]
+          "title": "policies/lambda_vpc.rego",
+          "rlinks": [{ "href": "../../policies/lambda_vpc.rego" }]
         },
         {
           "uuid": "9847683e-ba3b-4270-afdd-46d1968b946a",
-          "title": "policy/lambda_iam_least_privilege.rego",
-          "rlinks": [{ "href": "../policy/lambda_iam_least_privilege.rego" }]
+          "title": "policies/lambda_iam_least_privilege.rego",
+          "rlinks": [{ "href": "../../policies/lambda_iam_least_privilege.rego" }]
         }
       ]
     }

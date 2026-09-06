@@ -1,8 +1,8 @@
 # OSCAL component (Layer 4)
 
-`component-definition.json` documents how the Acme Health intake system
-implements its controls, for the SOC 2 Trust Services Criteria declared
-in `FRAMEWORKS.md`.
+`components/acme-health-intake.json` documents how the Acme Health intake
+system implements its controls, for the SOC 2 Trust Services Criteria
+declared in `FRAMEWORKS.md`.
 
 - **8 implemented-requirements**, one per gap in `GAPS.md`: 6 marked
   `implementation-status: implemented` (GAP-01, 02, 03, 04, 05, 07), 2
@@ -21,17 +21,22 @@ in `FRAMEWORKS.md`.
 
 ## Validation performed
 
-- `python -m json.tool` / `json.load` -- valid JSON, no syntax errors.
-- Manual check: all 8 gaps from `GAPS.md` present exactly once, every
-  `href` in `links` resolves to a real `back-matter` resource `uuid`,
-  every UUID is unique.
-- **Full schema validation against NIST's official OSCAL schema**:
-  `oscal_component_schema.json` from the `usnistgov/OSCAL` v1.2.3 GitHub
-  release, validated with Python's `jsonschema` (Draft7Validator). Result:
-  **0 validation errors.** `oscal-cli` itself wasn't available in this
-  environment, but validating against the same schema `oscal-cli` uses
-  gives equivalent structural confidence.
+- **`trestle validate`** (NIST's official `compliance-trestle` tool,
+  v5.1.0): imported into a scratch trestle workspace at
+  `component-definitions/acme-health-intake/component-definition.json` and
+  run as `trestle validate -t component-definition -n acme-health-intake`.
+  Result: **VALID**, no warnings (an initial run flagged one unreferenced
+  back-matter resource -- `FRAMEWORKS.md` wasn't linked from anywhere --
+  fixed by adding a `links` entry at the control-implementation level).
+- **Full schema validation** against NIST's official
+  `oscal_component_schema.json` (v1.2.3 release) using Python's
+  `jsonschema` (Draft7Validator): **0 errors**.
   - Note: the schema's patterns use Unicode property escapes (`\p{...}`)
     that Python's built-in `re` module can't compile -- validation used
     the third-party `regex` package shimmed in as `re` (`sys.modules['re']
     = regex` before importing `jsonschema`) to work around it.
+- Manual check: all 8 gaps from `GAPS.md` present exactly once, every
+  `href` in `links` resolves to a real `back-matter` resource `uuid`,
+  every UUID is unique, every relative path in `back-matter` resolves
+  correctly from this file's actual location (`oscal/components/`, two
+  levels below the repo root).
