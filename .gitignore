@@ -11,6 +11,11 @@ crash.log
 
 # Lambda build
 terraform/lambda/handler.zip
+access-review/build/
+
+# Python cache
+__pycache__/
+*.pyc
 
 # Local
 evidence/
@@ -18,3 +23,8 @@ evidence/
 
 # Personal drafts — never committed/pushed
 linkedin-draft.md
+linkedin-access.md
+
+# Local access-review artifacts (never pushed)
+access-review/latest-report.csv
+latest-report.csv
